@@ -1,0 +1,13 @@
+[package]
+name = "tronit"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+sha1 = "0.10"
+flate2 = "1.0"
+hex = "0.4"
+anyhow = "1.0"
+walkdir = "2.4"
+chrono = "0.4"
