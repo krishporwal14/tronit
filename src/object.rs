@@ -15,6 +15,22 @@ pub struct TreeEntry {
     pub hash: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct CommitMeta {
+    pub tree: String,
+    pub parent: Option<String>,
+    pub author: Option<String>,
+    pub committer: Option<String>,
+    pub message: String,
+}
+
+pub fn compute_object_hash(obj_type: &str, data: &[u8]) -> String {
+    let header = format!("{} {}\0", obj_type, data.len());
+    let mut store = header.into_bytes();
+    store.extend(data);
+    sha1_hash(&store)
+}
+
 pub fn write_object(obj_type: &str, data: &[u8]) -> Result<String> {
     let header = format!("{} {}\0", obj_type, data.len());
 
@@ -22,7 +38,6 @@ pub fn write_object(obj_type: &str, data: &[u8]) -> Result<String> {
     store.extend(data);
 
     let hash = sha1_hash(&store);
-
     let compressed = compress(&store)?;
 
     let dir = &hash[0..2];
@@ -42,7 +57,6 @@ pub fn read_object(hash: &str) -> Result<Vec<u8>> {
     let path = object_path(hash);
 
     let data = fs::read(&path).with_context(|| format!("failed to read object {}", path))?;
-
     decompress(&data)
 }
 
@@ -52,7 +66,7 @@ pub fn read_object_typed(hash: &str) -> Result<TronitObject> {
     let nul_pos = raw
         .iter()
         .position(|b| *b == 0)
-        .context("object mussing header separator")?;
+        .context("object missing header separator")?;
 
     let header = std::str::from_utf8(&raw[..nul_pos]).context("invalid object header")?;
     let mut parts = header.splitn(2, ' ');
@@ -64,7 +78,9 @@ pub fn read_object_typed(hash: &str) -> Result<TronitObject> {
         .to_string();
 
     let size_str = parts.next().context("object header missing size")?;
-    let expected_size: usize = size_str.parse().with_context(|| format!("invalid object size in header: {}", size_str))?;
+    let expected_size: usize = size_str
+        .parse()
+        .with_context(|| format!("invalid object size in header: {}", size_str))?;
 
     let payload = raw[nul_pos + 1..].to_vec();
     if payload.len() != expected_size {
@@ -75,7 +91,10 @@ pub fn read_object_typed(hash: &str) -> Result<TronitObject> {
         );
     }
 
-    Ok(TronitObject { obj_type, data: payload })
+    Ok(TronitObject {
+        obj_type,
+        data: payload,
+    })
 }
 
 pub fn write_tree(entries: &[TreeEntry]) -> Result<String> {
@@ -134,7 +153,7 @@ pub fn parse_tree(data: &[u8]) -> Result<Vec<TreeEntry>> {
             bail!("malformed tree: missing filename NUL terminator");
         }
         let name = std::str::from_utf8(&data[name_start..i])
-            .context("tree filename is not valid utf-8")?
+            .context("tree filename is not valid UTF-8")?
             .to_string();
         i += 1;
 
@@ -148,6 +167,51 @@ pub fn parse_tree(data: &[u8]) -> Result<Vec<TreeEntry>> {
     }
 
     Ok(entries)
+}
+
+pub fn parse_commit(data: &[u8]) -> Result<CommitMeta> {
+    let text = String::from_utf8(data.to_vec()).context("commit payload is not valid UTF-8")?;
+    let mut lines = text.lines();
+
+    let mut tree = String::new();
+    let mut parent = None;
+    let mut author = None;
+    let mut committer = None;
+    let mut in_headers = true;
+    let mut message_lines = Vec::new();
+
+    for line in lines.by_ref() {
+        if in_headers {
+            if line.is_empty() {
+                in_headers = false;
+                continue;
+            }
+
+            if let Some(v) = line.strip_prefix("tree ") {
+                tree = v.trim().to_string();
+            } else if let Some(v) = line.strip_prefix("parent ") {
+                parent = Some(v.trim().to_string());
+            } else if let Some(v) = line.strip_prefix("author ") {
+                author = Some(v.to_string());
+            } else if let Some(v) = line.strip_prefix("committer ") {
+                committer = Some(v.to_string());
+            }
+        } else {
+            message_lines.push(line.to_string());
+        }
+    }
+
+    if tree.is_empty() {
+        bail!("commit is missing tree field");
+    }
+
+    Ok(CommitMeta {
+        tree,
+        parent,
+        author,
+        committer,
+        message: message_lines.join("\n"),
+    })
 }
 
 fn object_path(hash: &str) -> String {
