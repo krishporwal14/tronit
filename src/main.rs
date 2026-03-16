@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 mod repo;
@@ -30,20 +31,26 @@ enum Commands {
     Add { path: String },
     Commit { 
         #[arg(short, long)]
-        message: String
+        message: String,
+        #[arg(long)]
+        author_name: Option<String>,
+        #[arg(long)]
+        author_email: Option<String>,
     },
     Log
 }
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init => init::run(),
-        Commands::HashObject { file } => hash_object::run(&file),
-        Commands::CatFile { hash } => cat_file::run(&hash),
-        Commands::Add { path } => add::run(&path),
-        Commands::Commit { message } => commit::run(&message),
-        Commands::Log => log::run(),
+        Commands::Init => init::run()?,
+        Commands::HashObject { file } => hash_object::run(&file)?,
+        Commands::CatFile { hash } => cat_file::run(&hash)?,
+        Commands::Add { path } => add::run(&path)?,
+        Commands::Commit { message, author_name, author_email } => commit::run(&message, author_name.as_deref(), author_email.as_deref())?,
+        Commands::Log => log::run()?,
     }
+
+    Ok(())
 }
