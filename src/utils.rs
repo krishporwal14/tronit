@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use flate2::Compression;
 use flate2::{read::ZlibDecoder, write::ZlibEncoder};
 use sha1::{Digest, Sha1};
-
 use std::io::{Read, Write};
 
 pub fn sha1_hash(data: &[u8]) -> String {
