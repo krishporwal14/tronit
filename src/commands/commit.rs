@@ -2,49 +2,42 @@ use anyhow::{bail, Result, Context};
 use chrono::Local;
 use std::collections::BTreeMap;
 use std::env;
-use std::fs;
-
+use crate::index::read_index;
 use crate::object::{self, TreeEntry};
+use crate::repo;
 
 pub fn run(message: &str, author_name: Option<&str>, author_email: Option<&str>) -> Result<()> {
+    repo::ensure_repo()?;
+
     let index = read_index(".tronit/index")?;
     if index.is_empty() {
         bail!("nothing to commit");
     }
 
     let tree_hash = build_root_tree(&index)?;
-
-    let parent = fs::read_to_string(".tronit/refs/heads/main")
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let parent = repo::resolve_head_commit()?;
 
     let (name, email) = resolve_author(author_name, author_email)?;
 
     let now = Local::now();
     let timestamp = now.timestamp();
     let timezone = now.format("%z").to_string();
-
     let ident = format!("{} <{}>", name, email);
 
     let mut commit_data = String::new();
     commit_data.push_str(&format!("tree {}\n", tree_hash));
-    if !parent.is_empty() {
-        commit_data.push_str(&format!("parent {}\n", parent));
+    if let Some(parent_hash) = parent {
+        if !parent_hash.is_empty() {
+            commit_data.push_str(&format!("parent {}\n", parent_hash));
+        }
     }
     commit_data.push_str(&format!("author {} {} {}\n", ident, timestamp, timezone));
-    commit_data.push_str(&format!(
-        "committer {} {} {}\n\n",
-        ident, timestamp, timezone
-    ));
+    commit_data.push_str(&format!("committer {} {} {}\n\n", ident, timestamp, timezone));
     commit_data.push_str(message);
     commit_data.push('\n');
 
     let commit_hash = object::write_object("commit", commit_data.as_bytes())?;
-
-    fs::create_dir_all(".tronit/refs/heads").context("failed to create refs directory")?;
-    fs::write(".tronit/refs/heads/main", format!("{}\n", commit_hash))
-        .context("failed to update branch ref")?;
+    repo::update_head_commit(&commit_hash)?;
 
     println!("commit {}", commit_hash);
     Ok(())
@@ -123,28 +116,4 @@ fn resolve_author(cli_name: Option<&str>, cli_email: Option<&str>) -> Result<(St
         .context("missing author email: pass --author-email or set TRONIT_AUTHOR_EMAIL")?;
 
     Ok((name, email))
-}
-fn read_index(index_path: &str) -> Result<BTreeMap<String, String>> {
-    let mut map = BTreeMap::new();
-
-    let text =
-        fs::read_to_string(index_path).with_context(|| format!("failed to read {}", index_path))?;
-
-    for (line_no, line) in text.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let (hash, path) = line
-            .split_once(' ')
-            .with_context(|| format!("malformed index line {}: {}", line_no + 1, line))?;
-
-        if hash.len() != 40 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
-            bail!("invalid hash at index line {}: {}", line_no + 1, hash);
-        }
-
-        map.insert(path.to_string(), hash.to_string());
-    }
-
-    Ok(map)
 }
