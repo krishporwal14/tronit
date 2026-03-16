@@ -1,20 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-
-mod repo;
-mod utils;
-mod object;
-
-mod commands {
-    pub mod init;
-    pub mod hash_object;
-    pub mod cat_file;
-    pub mod add;
-    pub mod commit;
-    pub mod log;
-}
-
-use commands::*;
+use tronit::commands;
 
 #[derive(Parser)]
 #[command(name="tronit")]
@@ -29,7 +15,7 @@ enum Commands {
     HashObject { file: String },
     CatFile { hash: String },
     Add { path: String },
-    Commit { 
+    Commit {
         #[arg(short, long)]
         message: String,
         #[arg(long)]
@@ -37,19 +23,33 @@ enum Commands {
         #[arg(long)]
         author_email: Option<String>,
     },
-    Log
+    Log,
+    Status,
+    Branch {
+        name: Option<String>,
+    },
+    Switch {
+        name: String,
+    },
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Init => init::run()?,
-        Commands::HashObject { file } => hash_object::run(&file)?,
-        Commands::CatFile { hash } => cat_file::run(&hash)?,
-        Commands::Add { path } => add::run(&path)?,
-        Commands::Commit { message, author_name, author_email } => commit::run(&message, author_name.as_deref(), author_email.as_deref())?,
-        Commands::Log => log::run()?,
+     match cli.command {
+        Commands::Init => commands::init::run()?,
+        Commands::HashObject { file } => commands::hash_object::run(&file)?,
+        Commands::CatFile { hash } => commands::cat_file::run(&hash)?,
+        Commands::Add { path } => commands::add::run(&path)?,
+        Commands::Commit {
+            message,
+            author_name,
+            author_email,
+        } => commands::commit::run(&message, author_name.as_deref(), author_email.as_deref())?,
+        Commands::Log => commands::log::run()?,
+        Commands::Status => commands::status::run()?,
+        Commands::Branch { name } => commands::branch::run(name.as_deref())?,
+        Commands::Switch { name } => commands::switch::run(&name)?,
     }
 
     Ok(())
