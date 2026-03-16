@@ -1,35 +1,24 @@
-use anyhow::{bail, Context, Result};
-use std::fs;
-
+use anyhow::{bail, Result};
 use crate::object;
+use crate::repo;
 
 pub fn run() -> Result<()> {
-    let mut current = fs::read_to_string(".tronit/refs/heads/main")
-        .context("failed to read .tronit/refs/heads/main")?
-        .trim()
-        .to_string();
-
-    if current.is_empty() {
-        bail!("main branch has no commits");
+    let mut current = repo::resolve_head_commit()?;
+    if current.is_none() {
+        bail!("current branch has no commits");
     }
 
-    loop {
-        let obj = object::read_object_typed(&current)?;
+    while let Some(hash) = current {
+        let obj = object::read_object_typed(&hash)?;
         if obj.obj_type != "commit" {
-            bail!("object {} is {}, expected commit", current, obj.obj_type);
+            bail!("object {} is {}, expected commit", hash, obj.obj_type);
         }
 
-        let text = String::from_utf8(obj.data).context("commit payload is not valid utf-8")?;
-        println!("commit {}\n{}\n", current, text);
+        let text = String::from_utf8(obj.data).map_err(anyhow::Error::from)?;
+        println!("commit {}\n{}\n", hash, text);
 
-        let parent = text
-            .lines()
-            .find_map(|line| line.strip_prefix("parent ").map(|s| s.trim().to_string()));
-
-        match parent {
-            Some(p) if !p.is_empty() => current = p,
-            _ => break,
-        }
+        let meta = object::parse_commit(text.as_bytes())?;
+        current = meta.parent;
     }
 
     Ok(())
