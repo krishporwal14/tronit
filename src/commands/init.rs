@@ -1,5 +1,6 @@
+use anyhow::Result;
 use crate::repo;
 
-pub fn run() {
-    repo::init_repo();
+pub fn run() -> Result<()> {
+    repo::init_repo()
 }
