@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use flate2::Compression;
 use flate2::{read::ZlibDecoder, write::ZlibEncoder};
 use sha1::{Digest, Sha1};
@@ -13,19 +14,19 @@ pub fn sha1_hash(data: &[u8]) -> String {
     hex::encode(result)
 }
 
-pub fn compress(data: &[u8]) -> Vec<u8> {
+pub fn compress(data: &[u8]) -> Result<Vec<u8>> {
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
 
-    encoder.write_all(data).unwrap();
-    encoder.finish().unwrap()
+    encoder.write_all(data).context("Failed to write data to compressor")?;
+    encoder.finish().context("Failed to finish compression")
 }
 
-pub fn decompress(data: &[u8]) -> Vec<u8> {
+pub fn decompress(data: &[u8]) -> Result<Vec<u8>> {
     let mut decoder = ZlibDecoder::new(data);
 
     let mut out = Vec::new();
 
-    decoder.read_to_end(&mut out).unwrap();
+    decoder.read_to_end(&mut out).context("Failed to read decompressed data")?;
 
-    out
+    Ok(out)
 }
